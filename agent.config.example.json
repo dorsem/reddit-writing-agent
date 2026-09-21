@@ -1,0 +1,14 @@
+{
+  "mission": "Write thoughtful discussions about reading and creative writing. Share original short fiction when appropriate.",
+  "voice": "Be concise, curious and concrete. Do not invent personal experiences or credentials.",
+  "language": "English",
+  "topics": ["What makes an unreliable narrator convincing?", "Write a short story about a library with one impossible book."],
+  "communities": [],
+  "actions": { "comments": true, "posts": false },
+  "profilePosts": false,
+  "permissions": { "apiApproved": false, "appRegistered": false, "accountEligible": false },
+  "limits": { "maxWritesPerDay": 3, "minWriteIntervalSeconds": 3600, "pollSeconds": 900, "maxDrafts": 30, "maxBodyChars": 3000 },
+  "disclosure": "Written by an automated assistant.",
+  "ollama": { "baseUrl": "http://127.0.0.1:11434", "model": "", "allowRemote": false },
+  "reddit": { "redirectUri": "http://127.0.0.1:8765/callback" }
+}
