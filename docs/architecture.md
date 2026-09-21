@@ -37,3 +37,11 @@ Rules acceptance records the operator's judgment. Account eligibility and API ap
 ## Validation
 
 `npm test` runs offline tests with isolated temporary state and fake API boundaries. They cover uncertainty, restart, failures before/after intent persistence, identity and app mismatch, changed rules and parent, rate limits, local stops, lock exclusion, deduplication and OAuth state checks. `npm run demo` exercises the draft pipeline with synthetic content. Real Reddit and live model validation require an approved app and locally configured model and are not claimed by these tests.
+
+## Editorial profile
+
+`editorial/commons.md` supplies the thematic voice and response strategies. `editorial/sources.json` supplies manually reviewed, dated evidence notes. The model selects a strategy and labels sensitivity and evidence use. `src/editorial.js` validates that metadata and resolves only known, unexpired citation markers; it cannot verify whether prose is true, relevant, or actually supported by a citation. Sensitive drafts bypass automatic publication and require the explicit `publish ID` path.
+
+Drafts retain a digest of the guide and source packet. Publication checks that digest and source expiry. Files are loaded when the process starts; restart after editing them. `preview` calls only the configured model and validates a sample post without constructing a Reddit client or creating a journal.
+
+`editorial/lore.json` contains optional fictional motifs. The scheduler offers at most one motif on configured cycle boundaries, only for posts. A model may omit it. Known raw motifs and invalid markers are rejected; this does not detect every paraphrase or inappropriate use. The packet is included in the editorial digest. Philosophy is prompt guidance, not a factual-verification layer. All built-in behavior is documented and can be disabled by the operator.

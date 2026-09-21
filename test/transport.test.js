@@ -1,6 +1,7 @@
 import test from 'node:test';
+import { createServer } from 'node:http';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -86,4 +87,28 @@ test('downloaded CLI init is repeatable, draft mode defaults and API access fail
   await assert.rejects(run('run'), e => /access is disabled/.test(e.stderr));
   await run('halt'); assert.equal(JSON.parse((await run('status')).stdout).stop, true);
   await assert.rejects(run('run', '--publsh'), e => /Unknown command/.test(e.stderr));
+});
+
+
+test('preview CLI calls the local model with editorial guidance without Reddit credentials or a queue', async t => {
+  const root = await mkdtemp(resolve(tmpdir(), 'reddit-agent-preview-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let calls = 0;
+  const server = createServer(async (req, res) => {
+    let raw = ''; for await (const chunk of req) raw += chunk;
+    const input = JSON.parse(raw); calls++;
+    assert.equal(req.url, '/api/chat');
+    assert.match(input.messages[0].content, /Humor and provocation/);
+    assert.equal(JSON.parse(input.messages[1].content).kind, 'post');
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ message: { content: JSON.stringify({ action: 'post', title: 'Who decides?', text: 'Who should be able to challenge a decision made with this system?', editorial: { relevant: true, strategy: 'grounded_question', humor: 'none', sensitive: false, evidenceMode: 'reflection' } }) } }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const c = structuredClone(base); c.ollama.model = 'fixture'; c.ollama.baseUrl = `http://127.0.0.1:${server.address().port}`;
+  await writeFile(resolve(root, 'agent.config.json'), JSON.stringify(c));
+  const cli = fileURLToPath(new URL('../bin/cli.js', import.meta.url));
+  const result = JSON.parse((await exec(process.execPath, [cli, 'preview'], { cwd: root })).stdout);
+  assert.equal(calls, 1); assert.equal(result.title, 'Who decides?'); assert.match(result.note, /Not queued/);
+  await assert.rejects(access(resolve(root, '.local')), { code: 'ENOENT' });
 });

@@ -1,3 +1,5 @@
+import { selectLore } from './lore.js';
+import { usesEditorial, editorialDigest, checkEditorialItem } from './editorial.js';
 import { randomUUID } from 'node:crypto';
 import { checkAccount, checkCommunity, checkParent, checkClock, checkBudget, rulesHash, configHash, fingerprint, duplicate, validateProposal, hash } from './policy.js';
 import { generate } from './model.js';
@@ -62,9 +64,10 @@ export class Agent {
       if (!parent) return { skipped: 'No eligible recent discussion.' };
       context = { title: parent.title, text: (parent.selftext || '').slice(0, 8000), comments: await this.reddit.context(parent) };
     }
-    const task = { kind, community: target.name, rules: rules.rules, description: rules.description.slice(0, 10000),
+    const task = { kind, lore: selectLore(this.config, cursor, kind), community: target.name, rules: rules.rules, description: rules.description.slice(0, 10000),
+      publicDescription: rules.publicDescription, submitText: rules.submitText,
       topic: this.config.topics[Math.floor(cursor / targets.length) % this.config.topics.length], ...(context ? { thread: context } : {}) };
-    const proposal = validateProposal(await this.model(this.config, task), kind, this.config);
+    const proposal = validateProposal(await this.model(this.config, task), kind, this.config, task.lore);
     if (parent) state.seen = [...state.seen, parent.name].slice(-2000);
     if (!proposal) { await this.store.write(state); return { skipped: 'Model declined this topic.' }; }
     const contentFingerprint = fingerprint(proposal.body);
@@ -72,15 +75,18 @@ export class Agent {
     const item = { id: randomUUID(), kind, target: name, community: target.name, parent: parent?.name || null,
       parentHash: parent ? hash({ title: parent.title, body: parent.selftext || '' }) : null,
       title: proposal.title, text: proposal.text, fingerprint: contentFingerprint, rulesDigest: digest, configDigest: configHash(this.config),
+      loreId: proposal.loreId, sourceIds: proposal.sourceIds, reviewRequired: proposal.reviewRequired, editorial: proposal.assessment,
+      ...(usesEditorial(this.config) ? { editorialDigest: editorialDigest() } : {}),
       status: 'draft', createdAt: Date.now() };
     state.items.push(item); await this.store.write(state);
-    return publish ? this.publish(item.id) : item;
+    return publish && !item.reviewRequired ? this.publish(item.id) : item;
   }
   async publish(id) {
     let { state, me } = await this.ready();
     const item = state.items.find(x => x.id === id);
     if (!item || item.status !== 'draft') throw new Error('Only an unsent draft can be published.');
     if (Date.now() - item.createdAt > 86400000) throw new Error('Draft expired after 24 hours. Reject it and prepare fresh content.');
+    checkEditorialItem(item, this.config);
     if (item.configDigest !== configHash(this.config)) throw new Error('Configuration changed since generation. Prepare a fresh draft.');
     if (state.items.some(x => x.id !== item.id && Number.isFinite(x.attemptedAt) && duplicate(item.fingerprint, x.fingerprint))) throw new Error('Previously attempted duplicate.');
     const { target, rules, digest } = await this.targetRules(item.target, me, state);

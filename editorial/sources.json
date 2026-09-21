@@ -1,0 +1,34 @@
+[
+  {
+    "id": "rhino-2026",
+    "label": "Ol Pejeta, April 2026",
+    "url": "https://www.olpejetaconservancy.org/2026/04/22/new-embryo-boosts-survival-chances-for-the-northern-white-rhino/",
+    "reviewedAt": "2026-09-21",
+    "reviewBy": "2026-10-21",
+    "note": "The 22 April 2026 report described two remaining female northern white rhinos and attempts at assisted reproduction. Cite as a dated report, not a freshly verified population count. It does not establish a successful birth or any AI contribution."
+  },
+  {
+    "id": "rhino-causes",
+    "label": "BioRescue FAQ",
+    "url": "https://biorescue.org/en/faq",
+    "reviewedAt": "2026-09-21",
+    "reviewBy": "2027-03-21",
+    "note": "BioRescue identifies poaching and wars that disrupted conservation in the northern white rhino's range as causes of its disappearance from the wild. This supports a historical mechanism, not a claim about a current conflict."
+  },
+  {
+    "id": "climate-ar6",
+    "label": "IPCC, 2023 synthesis",
+    "url": "https://report.ipcc.ch/ar6syr/headline.html",
+    "reviewedAt": "2026-09-21",
+    "reviewBy": "2027-03-21",
+    "note": "The 2023 IPCC synthesis attributes global warming to human activities, principally greenhouse-gas emissions, and finds human-caused climate change affects many weather and climate extremes. It does not attribute a specific current disaster, or geological hazards such as earthquakes, to climate change."
+  },
+  {
+    "id": "early-warning",
+    "label": "WMO, Early Warnings for All",
+    "url": "https://wmo.int/all-activities/build-resilience/early-warnings-all",
+    "reviewedAt": "2026-09-21",
+    "reviewBy": "2027-03-21",
+    "note": "WMO describes early warning systems as tools that save lives and reduce economic losses from hazardous weather, water and climate events. This is evidence about warning systems, not proof that a particular AI model works or that warnings alone ensure evacuation."
+  }
+]

@@ -1,3 +1,5 @@
+import { renderLore } from './lore.js';
+import { renderEditorial } from './editorial.js';
 import { createHash } from 'node:crypto';
 
 export const hash = value => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
@@ -20,15 +22,19 @@ export function duplicate(a, b) {
   return intersection / Math.max(1, Math.min(a.shingles.length, b.shingles.length)) >= 0.8;
 }
 
-export function validateProposal(p, kind, c) {
+export function validateProposal(p, kind, c, lore = null) {
   if (!p || typeof p !== 'object' || !['skip', kind].includes(p.action)) throw new Error('Model returned an invalid action.');
   if (p.action === 'skip') return null;
   if (typeof p.text !== 'string' || p.text.trim().length < 20) throw new Error('Model returned an empty or too short draft.');
   if (p.text.length + c.disclosure.length + 6 > c.limits.maxBodyChars) throw new Error('Draft exceeds configured length.');
   if (kind === 'post' && (typeof p.title !== 'string' || !p.title.trim() || p.title.length > 300)) throw new Error('Invalid post title.');
-  // v1 does not distribute links, tag users or insert hidden mentions into drafts.
-  if (/https?:|www\.|(?:^|\s)\/?[ur]\//i.test(p.text + ' ' + (p.title || ''))) throw new Error('Draft includes a link or mention; v1 requires a link-free draft.');
-  return { title: kind === 'post' ? p.title.trim() : '', body: p.text.trim(), text: `${p.text.trim()}\n\n---\n${c.disclosure}` };
+  // The model may cite trusted source IDs, but cannot supply its own URLs or mentions.
+  if (/https?:|www\.|(?:^|\s)\/?[ur]\//i.test(p.text + ' ' + (p.title || ''))) throw new Error('Draft includes a raw link or mention; use approved source markers.');
+  const literary = c.editorialProfile === 'commons' ? renderLore(p, lore) : { text: p.text, loreId: null };
+  const rendered = renderEditorial({ ...p, text: literary.text }, c);
+  const text = `${rendered.text.trim()}\n\n---\n${c.disclosure}`;
+  if (text.length > c.limits.maxBodyChars) throw new Error('Draft including citations exceeds configured length.');
+  return { ...rendered, loreId: literary.loreId, title: kind === 'post' ? p.title.trim() : '', body: p.text.trim(), text };
 }
 
 export function checkAccount(me, state, clientId) {

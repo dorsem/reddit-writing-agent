@@ -15,6 +15,8 @@ export async function loadEnv(root) {
 }
 
 export function validateConfig(c) {
+  if (c.editorialProfile !== undefined && !["none", "commons"].includes(c.editorialProfile)) throw new Error("Config: unknown editorialProfile.");
+  if (c.lore !== undefined && (typeof c.lore.enabled !== 'boolean' || !Number.isInteger(c.lore.everyCycles) || c.lore.everyCycles < 4 || c.lore.everyCycles > 100)) throw new Error('Config: lore needs enabled and everyCycles between 4 and 100.');
   for (const k of ['mission', 'voice', 'language', 'disclosure']) {
     if (typeof c[k] !== 'string' || !c[k].trim()) throw new Error(`Config: ${k} must be a nonempty string.`);
   }

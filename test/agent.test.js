@@ -79,7 +79,7 @@ test('fresh changed rules, changed thread, different account and suspension all 
 
 test('local stop flag prevents sending and model cannot override destinations', async t => {
   const x = await setup(t);
-  x.agent.model = async () => ({ action: 'comment', community: 'unauthorized', parent: 't3_other', text: 'This is a constructive and sufficiently detailed response about revising a fictional scene.' });
+  x.agent.model = async () => ({ ...(await demoModel()), action: 'comment', community: 'unauthorized', parent: 't3_other', text: 'This is a constructive and sufficiently detailed response about revising a fictional scene.' });
   const draft = await x.agent.cycle(); assert.equal(draft.community, 'writing_lab'); assert.equal(draft.parent, 't3_demo1');
   await writeFile(resolve(x.store.dir, 'STOP'), 'stop');
   await assert.rejects(x.agent.publish(draft.id), /STOP/); assert.equal(x.writes(), 0);
@@ -132,4 +132,19 @@ test('normalized and near duplicates, persisted budget and clock rollback', () =
 test('OAuth state validation rejects missing, altered and different-length state', () => {
   assert.equal(validState(null, 'secure-state'), false); assert.equal(validState('secure-state', 'secure-state'), true);
   assert.equal(validState('secure-statf', 'secure-state'), false); assert.equal(validState('x', 'secure-state'), false);
+});
+
+
+test('sensitive editorial responses remain drafts in automatic mode; explicit review can publish', async t => {
+  const x = await setup(t);
+  x.agent.model = async () => { const p = await demoModel(); p.editorial.sensitive = true; return p; };
+  const item = await x.agent.cycle(true);
+  assert.equal(item.status, 'draft'); assert.equal(item.reviewRequired, true); assert.equal(x.writes(), 0);
+  await x.agent.publish(item.id); assert.equal(x.writes(), 1);
+});
+
+test('changed editorial digest blocks an existing draft before submission', async t => {
+  const x = await setup(t); const draft = await x.agent.cycle();
+  const state = await x.store.read(); state.items[0].editorialDigest = 'old'; await x.store.write(state);
+  await assert.rejects(x.agent.publish(draft.id), /Editorial guide/); assert.equal(x.writes(), 0);
 });

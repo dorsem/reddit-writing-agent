@@ -8,7 +8,8 @@ import { loadConfig } from '../src/config.js';
 import { Store } from '../src/store.js';
 import { Reddit, authorize } from '../src/reddit.js';
 import { Agent } from '../src/agent.js';
-import { checkAccount, checkClock, fingerprint } from '../src/policy.js';
+import { generate } from '../src/model.js';
+import { checkAccount, checkClock, fingerprint, validateProposal } from '../src/policy.js';
 import { demoReddit, demoModel } from '../src/demo.js';
 
 const root = process.cwd();
@@ -22,7 +23,7 @@ const option = flag => args[args.indexOf(flag) + 1];
 
 function validateArgs() {
   const forms = {
-    help: /^help$/, init: /^init$/, demo: /^demo$/, auth: /^auth$/, doctor: /^doctor$/, status: /^status$/, halt: /^halt$/,
+    preview: /^preview$/, help: /^help$/, init: /^init$/, demo: /^demo$/, auth: /^auth$/, doctor: /^doctor$/, status: /^status$/, halt: /^halt$/,
     rules: /^rules (?:@profile|[A-Za-z0-9_]{3,21})(?: --accept)?$/,
     show: /^show [a-f0-9-]{36}$/, reject: /^reject [a-f0-9-]{36}$/, publish: /^publish [a-f0-9-]{36}$/,
     resume: /^resume --ack$/, resolve: /^resolve [a-f0-9-]{36} (?:--abandon|--receipt t[13]_[a-z0-9]+)$/,
@@ -36,6 +37,7 @@ async function main() {
   if (command === 'help') return output(`reddit-writing-agent (Node 22+)\n
   init                         Create local config and .env; never overwrite
   demo                         Offline synthetic demonstration (no account/model)
+  preview                      Generate a local sample post; no Reddit access
   auth                         OAuth login to your approved Reddit application
   doctor                       Check configuration and authenticated identity
   rules TARGET                 Read current rules; TARGET may be @profile
@@ -85,6 +87,11 @@ Run from your agent directory. Read README before enabling API access. No Reddit
     item.status = 'discarded'; delete item.text; delete item.title; await store.write(state); output('Draft discarded locally.');
   });
   const config = await loadConfig(root);
+  if (command === 'preview') {
+    const task = { kind: 'post', community: 'local preview only', rules: [], description: 'A sample essay for the operator to review; no publication destination.', topic: config.topics[0] };
+    const draft = validateProposal(await generate(config, task), 'post', config);
+    return output(draft ? { title: draft.title, text: draft.text, editorial: draft.assessment, reviewRequired: draft.reviewRequired, note: 'Preview only. Not queued or published.' } : { skipped: 'Model declined this topic.' });
+  }
   const reddit = new Reddit(config, store); const agent = new Agent(config, store, reddit);
   const execute = async () => store.lock(async () => {
     try {
