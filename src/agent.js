@@ -75,7 +75,7 @@ export class Agent {
     const item = { id: randomUUID(), kind, target: name, community: target.name, parent: parent?.name || null,
       parentHash: parent ? hash({ title: parent.title, body: parent.selftext || '' }) : null,
       title: proposal.title, text: proposal.text, fingerprint: contentFingerprint, rulesDigest: digest, configDigest: configHash(this.config),
-      loreId: proposal.loreId, sourceIds: proposal.sourceIds, reviewRequired: proposal.reviewRequired, editorial: proposal.assessment,
+      loreId: proposal.loreId, sourceIds: proposal.sourceIds, reviewRequired: proposal.reviewRequired || this.config.safety?.reviewAll === true, editorial: proposal.assessment,
       ...(usesEditorial(this.config) ? { editorialDigest: editorialDigest() } : {}),
       status: 'draft', createdAt: Date.now() };
     state.items.push(item); await this.store.write(state);

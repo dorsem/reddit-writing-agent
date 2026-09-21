@@ -6,7 +6,7 @@ import { validateProposal } from '../src/policy.js';
 import { generate } from '../src/model.js';
 const config = JSON.parse(readFileSync(new URL('../agent.config.example.json', import.meta.url), 'utf8'));
 const now = Date.parse('2026-09-21T12:00:00Z');
-const proposal = () => ({ action: 'comment', text: 'Who gets to decide how the system is used?', editorial: { relevant: true, strategy: 'grounded_question', humor: 'none', sensitive: false, evidenceMode: 'reflection' } });
+const proposal = () => ({ action: 'comment', text: 'Who gets to decide how the system is used?', editorial: { relevant: true, strategy: 'grounded_question', humor: 'none', sensitive: false, publicationRisk: 'low', evidenceMode: 'reflection' } });
 
 test('editorial assessment rejects irrelevant answers, invalid strategies and sensitive jokes', () => {
   for (const fields of [{ relevant: false }, { strategy: 'ragebait' }, { sensitive: true, humor: 'dry' }]) {
@@ -81,4 +81,19 @@ test('allowed lore integrates with editorial validation while preserving Unicode
     const rendered = validateProposal(p, 'comment', config, motif);
     assert.ok(rendered.text.includes(motif.text)); assert.equal(rendered.loreId, motif.id);
   }
+});
+
+test('writing switches alter guidance and reject a disabled humor assessment', async () => {
+  const { writingPrompt } = await import('../src/editorial.js');
+  const { toggleSetting } = await import('../src/settings.js');
+  const c = structuredClone(config);
+  assert.match(writingPrompt(c), /silently revise/);
+  toggleSetting(c, 0); assert.doesNotMatch(writingPrompt(c), /silently revise/);
+  toggleSetting(c, 1); assert.match(writingPrompt(c), /No jokes/);
+  const p = proposal(); p.editorial.humor = 'dry';
+  assert.throws(() => renderEditorial(p, c, now), /Humor/);
+  toggleSetting(c, 2); assert.doesNotMatch(editorialPrompt(c, now), /## Quiet philosophical depth/);
+  toggleSetting(c, 3); assert.equal(c.lore.enabled, false);
+  toggleSetting(c, 4); assert.equal(c.safety.reviewAll, true);
+  assert.throws(() => toggleSetting(c, 5), /Unknown/);
 });

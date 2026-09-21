@@ -148,3 +148,13 @@ test('changed editorial digest blocks an existing draft before submission', asyn
   const state = await x.store.read(); state.items[0].editorialDigest = 'old'; await x.store.write(state);
   await assert.rejects(x.agent.publish(draft.id), /Editorial guide/); assert.equal(x.writes(), 0);
 });
+
+test('uncertain publication risk and review-all settings both prevent automatic submission', async t => {
+  for (const mode of ['risk', 'all']) {
+    const x = await setup(t);
+    if (mode === 'all') x.config.safety.reviewAll = true;
+    else x.agent.model = async () => { const p = await demoModel(); p.editorial.publicationRisk = 'review'; return p; };
+    const item = await x.agent.cycle(true);
+    assert.equal(item.status, 'draft'); assert.equal(item.reviewRequired, true); assert.equal(x.writes(), 0);
+  }
+});

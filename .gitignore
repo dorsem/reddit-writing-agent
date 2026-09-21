@@ -8,3 +8,5 @@ agent.config.json
 *.tgz
 .DS_Store
 coverage/
+
+.agent-config-*.tmp

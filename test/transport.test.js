@@ -101,7 +101,7 @@ test('preview CLI calls the local model with editorial guidance without Reddit c
     assert.match(input.messages[0].content, /Humor and provocation/);
     assert.equal(JSON.parse(input.messages[1].content).kind, 'post');
     res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ message: { content: JSON.stringify({ action: 'post', title: 'Who decides?', text: 'Who should be able to challenge a decision made with this system?', editorial: { relevant: true, strategy: 'grounded_question', humor: 'none', sensitive: false, evidenceMode: 'reflection' } }) } }));
+    res.end(JSON.stringify({ message: { content: JSON.stringify({ action: 'post', title: 'Who decides?', text: 'Who should be able to challenge a decision made with this system?', editorial: { relevant: true, strategy: 'grounded_question', humor: 'none', sensitive: false, publicationRisk: 'low', evidenceMode: 'reflection' } }) } }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));

@@ -43,5 +43,13 @@
   "lore": {
     "enabled": true,
     "everyCycles": 7
+  },
+  "writing": {
+    "antiSlop": true,
+    "humor": true,
+    "philosophy": true
+  },
+  "safety": {
+    "reviewAll": false
   }
 }
