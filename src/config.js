@@ -15,6 +15,15 @@ export async function loadEnv(root) {
 }
 
 export function validateConfig(c) {
+  if (c.research !== undefined) {
+    const r = c.research;
+    if (!r || !['wikipedia', 'searxng'].includes(r.provider) || !/^[a-z]{2,12}$/.test(r.language || 'en') || !Number.isInteger(r.maxResults) || r.maxResults < 1 || r.maxResults > 10) throw new Error('Config: research needs provider, language and maxResults between 1 and 10.');
+    if (r.provider === 'searxng') {
+      const u = new URL(r.baseUrl);
+      const local = ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname);
+      if (u.username || u.password || u.search || u.hash || u.pathname !== '/' || (!local && u.protocol !== 'https:') || !['http:', 'https:'].includes(u.protocol)) throw new Error('Config: SearXNG requires a local HTTP or remote HTTPS origin without credentials.');
+    }
+  }
   if (c.editorialProfile !== undefined && !["none", "commons"].includes(c.editorialProfile)) throw new Error("Config: unknown editorialProfile.");
   if (c.lore !== undefined && (!c.lore || typeof c.lore.enabled !== 'boolean' || !Number.isInteger(c.lore.everyCycles) || c.lore.everyCycles < 4 || c.lore.everyCycles > 100)) throw new Error('Config: lore needs enabled and everyCycles between 4 and 100.');
   for (const group of ['writing', 'safety']) {

@@ -51,5 +51,10 @@
   },
   "safety": {
     "reviewAll": false
+  },
+  "research": {
+    "provider": "wikipedia",
+    "language": "en",
+    "maxResults": 5
   }
 }

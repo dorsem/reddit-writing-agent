@@ -24,28 +24,30 @@ If the discussion is unrelated, return {"action":"skip"}. Mark sensitive=true fo
 Assess the supplied community rules and actual draft for off-topic content, automated-content restrictions, repetition, provocation and unsupported claims. If explicitly prohibited, return skip. If permission or fit is unclear, set publicationRisk=review. Low means no issue identified by the model, never guaranteed compliance or safety from bans.`;
 }
 
-export function renderEditorial(proposal, config, now = Date.now()) {
-  if (!usesEditorial(config)) return { text: proposal.text, sourceIds: [], reviewRequired: false };
+export function renderEditorial(proposal, config, now = Date.now(), webSources = []) {
   const e = proposal.editorial;
-  if (!e || e.relevant !== true || !strategies.includes(e.strategy) || !['none', 'dry'].includes(e.humor)
-      || !['low', 'review'].includes(e.publicationRisk) || typeof e.sensitive !== 'boolean' || !['reflection', 'sourced'].includes(e.evidenceMode)) throw new Error('Missing or invalid editorial assessment; draft not queued.');
-  if ((e.sensitive || config.writing?.humor === false) && e.humor !== 'none') throw new Error('Humor is not allowed in a sensitive response.');
-  const available = new Map(evidencePacket(now).map(s => [s.id, s]));
+  if (usesEditorial(config)) {
+    if (!e || e.relevant !== true || !strategies.includes(e.strategy) || !['none', 'dry'].includes(e.humor)
+        || !['low', 'review'].includes(e.publicationRisk) || typeof e.sensitive !== 'boolean' || !['reflection', 'sourced'].includes(e.evidenceMode)) throw new Error('Missing or invalid editorial assessment; draft not queued.');
+    if ((e.sensitive || config.writing?.humor === false) && e.humor !== 'none') throw new Error('Humor is not allowed in a sensitive response.');
+  }
+  const available = new Map([...(usesEditorial(config) ? evidencePacket(now) : []), ...webSources].map(s => [s.id, s]));
   const ids = [...proposal.text.matchAll(/\[\[([a-z0-9-]+)\]\]/g)].map(m => m[1]);
-  if (e.evidenceMode === 'sourced' && !ids.length) throw new Error('A sourced draft needs an evidence reference.');
-  if (e.evidenceMode === 'reflection' && ids.length) throw new Error('Use sourced mode when citing evidence.');
+  if (usesEditorial(config) && e.evidenceMode === 'sourced' && !ids.length) throw new Error('A sourced draft needs an evidence reference.');
+  if (usesEditorial(config) && e.evidenceMode === 'reflection' && ids.length) throw new Error('Use sourced mode when citing evidence.');
   for (const id of ids) if (!available.has(id)) throw new Error('Unknown or expired evidence reference. Review the source packet.');
   const text = proposal.text.replace(/\[\[([a-z0-9-]+)\]\]/g, (_, id) => {
-    const s = available.get(id); return `[${s.label}](${s.url})`;
+    const s = available.get(id); return `[${s.label.replace(/[\[\]\\\r\n]/g, ' ')}](${s.url.replaceAll('(', '%28').replaceAll(')', '%29')})`;
   });
   if (/\[\[|\]\]/.test(text)) throw new Error('Malformed evidence reference.');
-  return { text, sourceIds: [...new Set(ids)], reviewRequired: e.sensitive || e.publicationRisk === 'review', assessment: e };
+  return { text, sourceIds: [...new Set(ids)], reviewRequired: webSources.length > 0 || !!(usesEditorial(config) && (e.sensitive || e.publicationRisk === 'review')), assessment: e };
 }
 
 export function checkEditorialItem(item, config, now = Date.now()) {
+  if (['manuscript', 'image'].includes(item.origin)) return;
   if (!usesEditorial(config)) return;
   if (item.editorialDigest !== editorialDigest()) throw new Error('Editorial guide or evidence changed. Prepare a fresh draft.');
-  const available = new Set(evidencePacket(now).map(s => s.id));
+  const available = new Set([...evidencePacket(now), ...(item.webSources || [])].map(s => s.id));
   if ((item.sourceIds || []).some(id => !available.has(id))) throw new Error('Draft evidence expired. Review sources and prepare a fresh draft.');
 }
 

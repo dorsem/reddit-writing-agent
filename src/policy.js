@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 
 export const hash = value => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
 export const configHash = c => hash(c);
-export const rulesHash = rules => hash({ rules: rules.rules, description: rules.description, publicDescription: rules.publicDescription, submissionType: rules.submissionType, submitText: rules.submitText });
+export const rulesHash = rules => hash({ rules: rules.rules, description: rules.description, publicDescription: rules.publicDescription, submissionType: rules.submissionType, submitText: rules.submitText, allowImages: rules.about?.allow_images });
 
 export function fingerprint(text) {
   const words = text.normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
@@ -22,7 +22,7 @@ export function duplicate(a, b) {
   return intersection / Math.max(1, Math.min(a.shingles.length, b.shingles.length)) >= 0.8;
 }
 
-export function validateProposal(p, kind, c, lore = null) {
+export function validateProposal(p, kind, c, lore = null, webSources = []) {
   if (!p || typeof p !== 'object' || !['skip', kind].includes(p.action)) throw new Error('Model returned an invalid action.');
   if (p.action === 'skip') return null;
   if (typeof p.text !== 'string' || p.text.trim().length < 20) throw new Error('Model returned an empty or too short draft.');
@@ -31,7 +31,7 @@ export function validateProposal(p, kind, c, lore = null) {
   // The model may cite trusted source IDs, but cannot supply its own URLs or mentions.
   if (/https?:|www\.|(?:^|\s)\/?[ur]\//i.test(p.text + ' ' + (p.title || ''))) throw new Error('Draft includes a raw link or mention; use approved source markers.');
   const literary = c.editorialProfile === 'commons' ? renderLore(p, lore) : { text: p.text, loreId: null };
-  const rendered = renderEditorial({ ...p, text: literary.text }, c);
+  const rendered = renderEditorial({ ...p, text: literary.text }, c, Date.now(), webSources);
   const text = `${rendered.text.trim()}\n\n---\n${c.disclosure}`;
   if (text.length > c.limits.maxBodyChars) throw new Error('Draft including citations exceeds configured length.');
   return { ...rendered, loreId: literary.loreId, title: kind === 'post' ? p.title.trim() : '', body: p.text.trim(), text };
@@ -55,6 +55,19 @@ export function checkParent(post, item, me, now = Date.now()) {
   if (post.name !== item.parent || post.subreddit?.toLowerCase() !== item.community.toLowerCase()) throw new Error('Parent target does not match draft.');
   if (post.locked || post.archived || post.over_18 || post.stickied || post.removed_by_category || ['[removed]', '[deleted]'].includes(post.selftext) || !post.author || ['[deleted]', me.name.toLowerCase()].includes(post.author.toLowerCase())) throw new Error('Thread is no longer eligible for a reply.');
   if (!Number.isFinite(post.created_utc) || now / 1000 - post.created_utc > 86400) throw new Error('Thread is older than 24 hours.');
+}
+
+export const objectHash = object => hash(object.name?.startsWith('t1_')
+  ? { body: object.body, parent: object.parent_id, root: object.link_id, author: object.author }
+  : { title: object.title, body: object.selftext || '' });
+
+export function checkReplyObject(object, community, me, { root = false, now = Date.now() } = {}) {
+  if (object.subreddit?.toLowerCase() !== community.toLowerCase() || !/^t[13]_[a-z0-9]+$/.test(object.name)) throw new Error('Reply object does not match community.');
+  const body = object.name.startsWith('t1_') ? object.body : object.selftext;
+  if (object.locked || object.archived || object.over_18 || object.removed_by_category || object.removed === true || ['[removed]', '[deleted]'].includes(body) || !object.author || object.author === '[deleted]') throw new Error('Reply target or root is unavailable.');
+  if (!root && object.author.toLowerCase() === me.name.toLowerCase()) throw new Error('Cannot reply to the authenticated account.');
+  const maximumAge = root ? 30 * 86400 : 86400;
+  if (!Number.isFinite(object.created_utc) || object.created_utc > now / 1000 + 60 || now / 1000 - object.created_utc > maximumAge) throw new Error('Reply target or root is too old.');
 }
 
 export function checkClock(state, now) {

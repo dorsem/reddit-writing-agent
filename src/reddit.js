@@ -2,14 +2,16 @@ import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { requestJson, RequestError, retryTime } from './http.js';
 import { requireConsent } from './config.js';
+import { uploadMedia, waitForMedia } from './media.js';
 
 const OAUTH = 'https://oauth.reddit.com';
 const TOKEN = 'https://www.reddit.com/api/v1/access_token';
 
 export class Reddit {
-  constructor(config, store, { env = process.env, fetcher = fetch } = {}) {
+  constructor(config, store, { env = process.env, fetcher = fetch, socketFactory } = {}) {
     requireConsent(config);
     this.config = config; this.store = store; this.fetcher = fetcher;
+    this.socketFactory = socketFactory;
     this.clientId = env.REDDIT_CLIENT_ID; this.secret = env.REDDIT_CLIENT_SECRET || '';
     this.userAgent = env.REDDIT_USER_AGENT;
     if (!this.clientId || !this.userAgent) throw new Error('Set REDDIT_CLIENT_ID and REDDIT_USER_AGENT in .env.');
@@ -75,6 +77,31 @@ export class Reddit {
     if (!Array.isArray(x.data?.children)) throw new Error('Cannot read community listing.');
     return x.data.children.filter(c => c.kind === 't3').map(c => c.data);
   }
+  async discover(query) {
+    if (typeof query !== 'string' || !query.trim() || query.length > 300) throw new Error('Search query must contain 1–300 characters.');
+    const x = await this.api(`/subreddits/search?${new URLSearchParams({ q: query, limit: '10', sort: 'relevance', show_users: 'false', raw_json: '1' })}`);
+    if (!Array.isArray(x.data?.children)) throw new Error('Invalid community search response.');
+    return x.data.children.filter(c => c.kind === 't5' && /^[A-Za-z0-9_]{3,21}$/.test(c.data?.display_name) && !c.data.over18 && !c.data.quarantine)
+      .map(({ data: d }) => ({ name: d.display_name, title: d.title, description: String(d.public_description || '').slice(0, 1500), subscribers: d.subscribers, url: `https://www.reddit.com/r/${d.display_name}/` }));
+  }
+  async replies(fullname, root) {
+    if (!/^t[13]_[a-z0-9]+$/.test(fullname) || !/^t3_[a-z0-9]+$/.test(root)) throw new Error('Invalid conversation IDs.');
+    const query = new URLSearchParams({ limit: '25', depth: '2', sort: 'new', raw_json: '1', ...(fullname.startsWith('t1_') ? { comment: fullname.slice(3) } : {}) });
+    const data = await this.api(`/comments/${root.slice(3)}.json?${query}`);
+    if (!Array.isArray(data?.[1]?.data?.children)) throw new Error('Cannot read conversation replies.');
+    const result = [];
+    const walk = (children, depth = 0) => {
+      if (depth > 3 || !Array.isArray(children)) return;
+      for (const node of children.slice(0, 100)) {
+        if (node.kind !== 't1') continue;
+        if (node.data.parent_id === fullname) result.push(node.data);
+        walk(node.data.replies?.data?.children, depth + 1);
+      }
+    };
+    walk(data[1].data.children);
+    return result.slice(0, 25);
+  }
+  upload(image, bytes, record) { return uploadMedia(this, image, bytes, record, this.fetcher); }
   async info(fullname) {
     if (!/^t[13]_[a-z0-9]+$/.test(fullname)) throw new Error('Invalid Reddit object ID.');
     const x = await this.api(`/api/info?id=${fullname}&raw_json=1`);
@@ -90,12 +117,13 @@ export class Reddit {
   async submit(item) {
     const data = item.kind === 'comment'
       ? await this.api('/api/comment', { api_type: 'json', thing_id: item.parent, text: item.text })
-      : await this.api('/api/submit', { api_type: 'json', sr: item.community, kind: 'self', title: item.title, text: item.text, resubmit: 'false', sendreplies: 'false' });
+      : await this.api('/api/submit', { api_type: 'json', sr: item.community, kind: item.image ? 'image' : 'self', title: item.title, text: item.text, resubmit: 'false', sendreplies: 'false', ...(item.image ? { url: item.asset.url, validate_on_submit: 'true' } : {}) });
     const receipt = item.kind === 'comment' ? data.json?.data?.things?.[0]?.data : data.json?.data;
     const name = receipt?.name;
+    if (item.image && !/^t3_[a-z0-9]+$/.test(name)) return waitForMedia(receipt?.websocket_url, this.socketFactory);
     if (!new RegExp(`^${item.kind === 'comment' ? 't1' : 't3'}_[a-z0-9]+$`).test(name)) throw new RequestError('Submission response has no usable object ID.', { ambiguous: true });
     // Build URLs locally; never follow arbitrary links returned by the model or API.
-    return { name, url: item.kind === 'post' ? `https://www.reddit.com/comments/${name.slice(3)}/` : `https://www.reddit.com/comments/${item.parent.slice(3)}/_/${name.slice(3)}/` };
+    return { name, url: item.kind === 'post' ? `https://www.reddit.com/comments/${name.slice(3)}/` : `https://www.reddit.com/comments/${(item.root || item.parent).slice(3)}/_/${name.slice(3)}/` };
   }
 }
 

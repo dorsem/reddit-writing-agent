@@ -12,6 +12,9 @@ import { settings } from '../src/settings.js';
 import { generate } from '../src/model.js';
 import { checkAccount, checkClock, fingerprint, validateProposal } from '../src/policy.js';
 import { demoReddit, demoModel } from '../src/demo.js';
+import { research, selectSources } from '../src/research.js';
+import { initFleet, loadFleet, runFleet } from '../src/fleet.js';
+import { matchesImageReceipt } from '../src/media.js';
 
 const root = process.cwd();
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -23,8 +26,27 @@ const has = flag => args.includes(flag);
 const option = flag => args[args.indexOf(flag) + 1];
 
 function validateArgs() {
+  const variable = { run: 0, reply: 1, discover: 1, research: 1, import: 2, image: 2, fleet: 1 };
+  if (Object.hasOwn(variable, command)) {
+    const positional = variable[command];
+    if (args.length < positional + 1 || args.slice(1, positional + 1).some(x => !x || x.startsWith('--'))) throw new Error('Missing command arguments. Run help.');
+    const allowed = { run: ['--publish', '--cycles', '--sources'], reply: ['--sources'], discover: [], research: [], import: ['--title'], image: ['--title'], fleet: ['--publish', '--cycles'] }[command];
+    const seen = new Set();
+    for (let i = positional + 1; i < args.length; i++) {
+      const flag = args[i];
+      if (!allowed.includes(flag) || seen.has(flag)) throw new Error('Unknown command or duplicate flags. Run help.');
+      seen.add(flag);
+      if (flag !== '--publish' && (!args[++i] || args[i].startsWith('--'))) throw new Error(`Missing value for ${flag}.`);
+    }
+    if (['import', 'image'].includes(command) && !seen.has('--title')) throw new Error('Use --title "Post title".');
+    if (command === 'reply' && !/^t1_[a-z0-9]+$/.test(args[1])) throw new Error('Use a comment fullname such as t1_abc123.');
+    if (command === 'fleet' && (!['init', 'status', 'run'].includes(args[1]) || (args[1] !== 'run' && args.length !== 2))) throw new Error('Use fleet init, fleet status or fleet run.');
+    if (seen.has('--sources') && !/^web-[a-f0-9]{16}(?:,web-[a-f0-9]{16}){0,9}$/.test(option('--sources'))) throw new Error('Use source IDs returned by research, separated by commas.');
+    if (seen.has('--cycles') && (!/^[0-9]+$/.test(option('--cycles')) || Number(option('--cycles')) < 1 || Number(option('--cycles')) > 20)) throw new Error('--cycles must be 1–20.');
+    return;
+  }
   const forms = {
-    settings: /^settings$/, preview: /^preview$/, help: /^help$/, init: /^init$/, demo: /^demo$/, auth: /^auth$/, doctor: /^doctor$/, status: /^status$/, halt: /^halt$/,
+    settings: /^settings$/, preview: /^preview$/, help: /^help$/, init: /^init$/, demo: /^demo$/, auth: /^auth$/, doctor: /^doctor$/, status: /^status$/, followups: /^followups$/, halt: /^halt$/,
     rules: /^rules (?:@profile|[A-Za-z0-9_]{3,21})(?: --accept)?$/,
     show: /^show [a-f0-9-]{36}$/, reject: /^reject [a-f0-9-]{36}$/, publish: /^publish [a-f0-9-]{36}$/,
     resume: /^resume --ack$/, resolve: /^resolve [a-f0-9-]{36} (?:--abandon|--receipt t[13]_[a-z0-9]+)$/,
@@ -40,11 +62,20 @@ async function main() {
   demo                         Offline synthetic demonstration (no account/model)
   settings                     Toggle local writing options interactively
   preview                      Generate a local sample post; no Reddit access
+  discover "QUERY"             Search communities; never adds to allowlist
+  research "QUERY"             Search Wikipedia or configured SearXNG; save source IDs
+  reply t1_COMMENT [--sources IDs] Draft a reply with conversation context
+  followups                    List direct replies to recent sent items
+  import TARGET FILE --title "TITLE"  Queue a UTF-8 .md/.txt manuscript verbatim
+  image TARGET FILE --title "TITLE"   Queue a local PNG/JPEG (up to 10 MiB)
+  fleet init                   Create two isolated agent directories and a manifest
+  fleet status                 Show each configured agent's queue status
+  fleet run [--publish] [--cycles N]   Run 1–8 separate account agents concurrently
   auth                         OAuth login to your approved Reddit application
   doctor                       Check configuration and authenticated identity
   rules TARGET                 Read current rules; TARGET may be @profile
   rules TARGET --accept        Record your review and permission for automation
-  run [--publish] [--cycles N]  Draft by default; 1–20 finite cycles
+  run [--publish] [--cycles N] [--sources ID,ID]  Draft by default; 1–20 cycles
   status                       Queue and receipts (no tokens or draft bodies)
   show ID                      Read a draft
   publish ID                   Send exactly one existing draft after fresh checks
@@ -55,6 +86,16 @@ async function main() {
   resolve ID --abandon         Never retry this intent; keeps quota and fingerprint
 
 Run from your agent directory. Read README before enabling API access. No Reddit password is requested.`);
+  if (command === 'fleet') {
+    if (args[1] === 'init') return output(await initFleet(root, packageRoot));
+    if (args[1] === 'status') return output((await loadFleet(root, false)).map(x => ({ name: x.name, directory: x.directory, connected: !!x.state.binding, halted: x.state.halted, drafts: x.state.items.filter(i => i.status === 'draft').length })));
+    const controller = new AbortController(); const stop = () => controller.abort();
+    process.on('SIGINT', stop); process.on('SIGTERM', stop);
+    try {
+      const result = await runFleet(root, fileURLToPath(import.meta.url), { publish: has('--publish'), cycles: has('--cycles') ? Number(option('--cycles')) : 1, signal: controller.signal, output });
+      output(result); if (!result.success) process.exitCode = 1; return;
+    } finally { process.off('SIGINT', stop); process.off('SIGTERM', stop); }
+  }
   if (command === 'init') {
     for (const [source, target] of [['agent.config.example.json', 'agent.config.json'], ['.env.example', '.env']]) {
       try { await writeFile(resolve(root, target), await readFile(resolve(packageRoot, source)), { flag: 'wx', mode: 0o600 }); output(`Created ${target}`); }
@@ -89,6 +130,11 @@ Run from your agent directory. Read README before enabling API access. No Reddit
     item.status = 'discarded'; delete item.text; delete item.title; await store.write(state); output('Draft discarded locally.');
   });
   const config = await loadConfig(root);
+  if (command === 'research') {
+    const packet = await research(config, args[1]);
+    await store.lock(() => store.writeJson('research.json', packet));
+    return output(packet);
+  }
   if (command === 'settings') return store.lock(() => settings(root, config));
   if (command === 'preview') {
     const task = { kind: 'post', community: 'local preview only', rules: [], description: 'A sample essay for the operator to review; no publication destination.', topic: config.topics[0] };
@@ -112,8 +158,15 @@ Run from your agent directory. Read README before enabling API access. No Reddit
           note: 'No observed restriction is not proof of account eligibility. Model availability is checked when generating.' });
       }
       if (command === 'rules') return output(await agent.acceptRules(args[1], has('--accept')));
+      if (command === 'discover') return output({ communities: await reddit.discover(args[1]), note: 'Nothing added or subscribed. Add a chosen community to config, then review its rules.' });
+      if (command === 'followups') return output(await agent.followups());
+      if (command === 'import' || command === 'image') return output(publicDraft(await agent.importFile(args[1], resolve(root, args[2]), option('--title'), command === 'image')));
       if (command === 'publish') return output(await agent.publish(args[1]));
-      if (command === 'run') return output(publicDraft(await agent.cycle(has('--publish'))));
+      if (command === 'run' || command === 'reply') {
+        let sources = [];
+        if (has('--sources')) sources = selectSources(JSON.parse(await readFile(resolve(store.dir, 'research.json'), 'utf8')), option('--sources').split(','));
+        return output(publicDraft(command === 'reply' ? await agent.reply(args[1], sources) : await agent.cycle(has('--publish'), sources)));
+      }
       if (command === 'resume') {
         const state = await store.read();
         if (state.items.some(x => ['pending', 'unknown'].includes(x.status))) throw new Error('Resolve every uncertain send first.');
@@ -134,7 +187,7 @@ Run from your agent directory. Read README before enabling API access. No Reddit
           const actualText = item.kind === 'post' ? actual.selftext : actual.body;
           if (!name.startsWith(prefix) || actual.author?.toLowerCase() !== me.name.toLowerCase() || actual.subreddit?.toLowerCase() !== item.community.toLowerCase()
             || (item.kind === 'comment' && actual.parent_id !== item.parent) || (item.kind === 'post' && actual.title !== item.title)
-            || typeof actualText !== 'string' || fingerprint(actualText).exact !== fingerprint(item.text).exact) throw new Error('Receipt does not match the exact attempted content, author and target.');
+            || (item.image ? !matchesImageReceipt(item, actual) : typeof actualText !== 'string' || fingerprint(actualText).exact !== fingerprint(item.text).exact)) throw new Error('Receipt does not match the exact attempted content, author and target.');
           item.status = 'sent'; item.receipt = { name }; item.resolution = 'verified receipt';
         } else { item.status = 'abandoned'; item.resolution = 'Operator abandoned intent; delivery remains unknown. Never retry this content.'; }
         delete item.text; delete item.title; await store.write(state);

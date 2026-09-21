@@ -10,3 +10,7 @@ agent.config.json
 coverage/
 
 .agent-config-*.tmp
+
+# Per-account profiles and fleet configuration
+agents/
+fleet.config.json
