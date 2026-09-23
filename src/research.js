@@ -26,7 +26,7 @@ export async function research(config, query, fetcher = fetch, now = Date.now())
     const language = config.research?.language || 'en';
     const url = new URL(`https://${language}.wikipedia.org/w/api.php`);
     url.search = new URLSearchParams({ action: 'query', list: 'search', srsearch: query, srlimit: String(limit), format: 'json', utf8: '1' }).toString();
-    const { data } = await requestJson(url, { headers: { 'user-agent': 'reddit-writing-agent/0.2 (source discovery)' } }, fetcher);
+    const { data } = await requestJson(url, { headers: { 'user-agent': 'red-agent/0.2 (source discovery)' } }, fetcher);
     if (!Array.isArray(data.query?.search)) throw new Error('Wikipedia search returned an invalid response.');
     rows = data.query.search.map(x => ({ title: x.title, url: `https://${language}.wikipedia.org/wiki/${encodeURIComponent(String(x.title).replaceAll(' ', '_'))}`, excerpt: x.snippet }));
   } else throw new Error('Unknown research provider.');

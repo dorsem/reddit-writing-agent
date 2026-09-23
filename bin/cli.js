@@ -57,7 +57,7 @@ function validateArgs() {
 
 async function main() {
   validateArgs();
-  if (command === 'help') return output(`reddit-writing-agent (Node 22+)\n
+  if (command === 'help') return output(`RED AGENT (Node 22+)\n
   init                         Create local config and .env; never overwrite
   demo                         Offline synthetic demonstration (no account/model)
   settings                     Toggle local writing options interactively

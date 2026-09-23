@@ -1,4 +1,6 @@
-# Reddit Writing Agent
+# RED AGENT
+
+**RED AGENT** — сокращение от Reddit Agent и отсылка к слову «красный».
 
 Локальный CLI-агент для Reddit на Node.js. Генерирует посты и комментарии через Ollama, сохраняет их в очередь черновиков и публикует через Reddit API с OAuth-авторизацией.
 
